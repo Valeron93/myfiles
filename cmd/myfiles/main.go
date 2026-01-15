@@ -4,8 +4,9 @@ import (
 	"log"
 
 	"github.com/Valeron93/myfiles/controller"
+	"github.com/Valeron93/myfiles/middleware"
 	"github.com/Valeron93/myfiles/model"
-	"github.com/Valeron93/myfiles/service"
+	"github.com/Valeron93/myfiles/service/auth"
 	"github.com/Valeron93/myfiles/views"
 	"github.com/glebarez/sqlite"
 	"github.com/gofiber/fiber/v2"
@@ -29,7 +30,8 @@ func main() {
 	); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
-	auth, err := service.NewAuthSQL(db)
+
+	auth, err := auth.NewSQL(db)
 	if err != nil {
 		log.Fatalf("failed to create auth service: %v", err)
 	}
@@ -40,10 +42,10 @@ func main() {
 		Views: views.Engine,
 	})
 
-	app.Use(logger.New(), authController.InjectSession())
+	app.Use(logger.New(), middleware.InjectSession(auth))
 	app.Get("/", func(c *fiber.Ctx) error {
 		title := "index title!"
-		session, ok := c.UserContext().Value(controller.SessionCtx{}).(model.UserSession)
+		session, ok := c.UserContext().Value(middleware.SessionCtx{}).(model.UserSession)
 		if ok {
 			title = session.User.Username
 		}

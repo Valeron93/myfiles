@@ -1,4 +1,4 @@
-package service
+package auth
 
 import (
 	"context"
@@ -28,15 +28,15 @@ type Auth interface {
 	RevokeSession(ctx context.Context, session model.UserSession) error
 }
 
-func NewAuthSQL(db *gorm.DB) (Auth, error) {
-	return &authServiceSQLiteImpl{db}, nil
+func NewSQL(db *gorm.DB) (Auth, error) {
+	return &authSQL{db}, nil
 }
 
-type authServiceSQLiteImpl struct {
+type authSQL struct {
 	db *gorm.DB
 }
 
-func (a *authServiceSQLiteImpl) RegisterUser(ctx context.Context, opts UserRegistrationInfo) (model.User, error) {
+func (a *authSQL) RegisterUser(ctx context.Context, opts UserRegistrationInfo) (model.User, error) {
 	if err := validation.Struct(opts); err != nil {
 		return model.User{}, err
 	}
@@ -60,7 +60,7 @@ func (a *authServiceSQLiteImpl) RegisterUser(ctx context.Context, opts UserRegis
 	return user, wrapGormError(err)
 }
 
-func (a *authServiceSQLiteImpl) GetUser(ctx context.Context, username string) (model.User, error) {
+func (a *authSQL) GetUser(ctx context.Context, username string) (model.User, error) {
 	var user model.User
 
 	user, err := gorm.G[model.User](a.db).
@@ -70,22 +70,22 @@ func (a *authServiceSQLiteImpl) GetUser(ctx context.Context, username string) (m
 	return user, wrapGormError(err)
 }
 
-func (a *authServiceSQLiteImpl) DeleteUser(ctx context.Context, user model.User) error {
+func (a *authSQL) DeleteUser(ctx context.Context, user model.User) error {
 	log.Printf("unimplemented: %s", "DeleteUser")
 	return nil
 }
 
-func (a *authServiceSQLiteImpl) CreateSession(ctx context.Context, username, password string) (model.UserSession, error) {
+func (a *authSQL) CreateSession(ctx context.Context, username, password string) (model.UserSession, error) {
 
 	user, err := a.GetUser(ctx, username)
 	if err != nil {
 		// compare hash here to prevent timing attacks
 		_ = bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(password))
-		return model.UserSession{}, err
+		return model.UserSession{}, ErrInvalidCredentials
 	}
 
 	if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(password)); err != nil {
-		return model.UserSession{}, err
+		return model.UserSession{}, ErrInvalidCredentials
 	}
 
 	session := model.UserSession{
@@ -98,7 +98,7 @@ func (a *authServiceSQLiteImpl) CreateSession(ctx context.Context, username, pas
 	return session, wrapGormError(err)
 }
 
-func (a *authServiceSQLiteImpl) GetSession(ctx context.Context, sessionId uuid.UUID) (model.UserSession, error) {
+func (a *authSQL) GetSession(ctx context.Context, sessionId uuid.UUID) (model.UserSession, error) {
 
 	session := model.UserSession{
 		ID: sessionId,
@@ -112,7 +112,7 @@ func (a *authServiceSQLiteImpl) GetSession(ctx context.Context, sessionId uuid.U
 	return session, wrapGormError(err)
 }
 
-func (a *authServiceSQLiteImpl) RevokeSession(ctx context.Context, session model.UserSession) error {
+func (a *authSQL) RevokeSession(ctx context.Context, session model.UserSession) error {
 	log.Printf("unimplemented: %s", "RevokeSession")
 	return nil
 }

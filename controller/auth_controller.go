@@ -1,26 +1,21 @@
 package controller
 
 import (
-	"context"
 	"errors"
 	"log"
 
 	"github.com/Valeron93/myfiles/controller/schema"
-	"github.com/Valeron93/myfiles/service"
+	"github.com/Valeron93/myfiles/middleware"
+	"github.com/Valeron93/myfiles/service/auth"
 	"github.com/Valeron93/myfiles/validation"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
-const SessionCookieKey = "session_id"
-
 type AuthController struct {
-	auth service.Auth
+	auth auth.Auth
 }
 
-type SessionCtx struct{}
-
-func NewAuth(auth service.Auth) *AuthController {
+func NewAuth(auth auth.Auth) *AuthController {
 	return &AuthController{
 		auth,
 	}
@@ -38,26 +33,14 @@ func (a *AuthController) Register(c *fiber.Ctx) error {
 
 	_, err := a.auth.RegisterUser(
 		c.Context(),
-		service.UserRegistrationInfo(registerSchema),
+		auth.UserRegistrationInfo(registerSchema),
 	)
 
 	if err != nil {
-		var validationError validation.Error
-		if errors.As(err, &validationError) {
-			return c.Render("register-form", fiber.Map{
-				"Form":   registerSchema,
-				"Errors": validationError.Messages,
-			})
-		}
-		log.Printf("%#+v", err)
-		if errors.Is(err, service.ErrAlreadyExists) {
-			return c.Render("register-form", fiber.Map{
-				"Form":   registerSchema,
-				"Errors": []string{"User with this username already exists."},
-			})
-		}
-
-		return err
+		return c.Render("register-form", fiber.Map{
+			"Form":   registerSchema,
+			"Errors": translateAuthErrors(err),
+		})
 	}
 
 	session, err := a.auth.CreateSession(
@@ -67,11 +50,14 @@ func (a *AuthController) Register(c *fiber.Ctx) error {
 	)
 
 	if err != nil {
-		return err
+		return c.Render("register-form", fiber.Map{
+			"Form":   registerSchema,
+			"Errors": translateAuthErrors(err),
+		})
 	}
 
 	c.Cookie(&fiber.Cookie{
-		Name:     SessionCookieKey,
+		Name:     middleware.SessionCookieKey,
 		Value:    session.ID.String(),
 		Path:     "/",
 		HTTPOnly: true,
@@ -95,17 +81,14 @@ func (a *AuthController) Login(c *fiber.Ctx) error {
 		a.auth.CreateSession(c.Context(), loginSchema.Username, loginSchema.Password)
 
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidCredentials) {
-			return c.Render("login-form", fiber.Map{
-				"Form":   loginSchema,
-				"Errors": []string{"Invalid credentials."},
-			})
-		}
-		return err
+		return c.Render("login-form", fiber.Map{
+			"Form":   loginSchema,
+			"Errors": translateAuthErrors(err),
+		})
 	}
 
 	c.Cookie(&fiber.Cookie{
-		Name:     SessionCookieKey,
+		Name:     middleware.SessionCookieKey,
 		Value:    session.ID.String(),
 		Path:     "/",
 		HTTPOnly: true,
@@ -115,36 +98,21 @@ func (a *AuthController) Login(c *fiber.Ctx) error {
 	return nil
 }
 
-func (a *AuthController) InjectSession() func(c *fiber.Ctx) error {
-	return func(c *fiber.Ctx) error {
-		sessionID := c.Cookies(SessionCookieKey)
-		if sessionID == "" {
-			return c.Next()
-		}
-
-		sessionUUID, err := uuid.Parse(sessionID)
-		if err != nil {
-			return c.Next()
-		}
-
-		session, err := a.auth.GetSession(
-			c.Context(),
-			sessionUUID,
-		)
-
-		if err != nil {
-			if errors.Is(err, service.ErrNotFound) {
-				c.ClearCookie(SessionCookieKey)
-			}
-			return c.Next()
-		}
-
-		c.SetUserContext(context.WithValue(
-			context.Background(),
-			SessionCtx{},
-			session,
-		))
-
-		return c.Next()
+// translates known errors to string that can be displayed in html
+// if error is unknown, returns internal server error
+func translateAuthErrors(err error) []string {
+	var validateError validation.Error
+	if errors.As(err, &validateError) {
+		return validateError.Messages
 	}
+
+	if errors.Is(err, auth.ErrUserAlreadyExists) {
+		return []string{"User with this username already exists"}
+	}
+
+	if errors.Is(err, auth.ErrInvalidCredentials) {
+		return []string{"Invalid credentials"}
+	}
+	log.Printf("unhandled error: %v", err)
+	return []string{"Internal Server Error"}
 }
