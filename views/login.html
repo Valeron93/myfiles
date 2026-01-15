@@ -1,0 +1,13 @@
+{{define "login-form"}}
+<form hx-post="/api/login" hx-swap="outerHTML">
+    <input type="text" name="username" placeholder="Username..." value="{{.Form.Username}}"/>
+    <input type="password" name="password" placeholder="Password..." value="{{.Form.Password}}"/>
+    <input type="submit" value="Login">
+
+    {{range .Errors}}
+    <span class="error">{{ . }}</span>
+    {{end}}
+</form>
+{{end}}
+
+{{template "login-form" .}}

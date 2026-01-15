@@ -1,0 +1,15 @@
+
+{{define "register-form"}}
+<form hx-post="/api/register" hx-swap="outerHTML">
+    <input type="text" name="username" placeholder="Username..." value="{{.Form.Username}}"/>
+    <input type="password" name="password" placeholder="Password..." value="{{.Form.Password}}"/>
+    <input type="password" name="confirmPassword" placeholder="Confirm password..." value="{{.Form.ConfirmPassword}}"/>
+    <input type="submit" value="Register">
+
+    {{range .Errors}}
+    <span class="error">{{ . }}</span>
+    {{end}}
+</form>
+{{end}}
+
+{{template "register-form" .}}
